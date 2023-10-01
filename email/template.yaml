@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: An example SAM template for processing SQS messages and sending emails using SES.
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage (e.g., prod, dev)
+    Default: dev
+  SourceEmailDev:
+    Type: String
+    Description: Sender email for development environment
+    Default: 'google.com'
+  SourceEmailProd:
+    Type: String
+    Description: Sender email for production environment
+    Default: 'no-reply@google.com'
+  SQSQueueArn:
+    Type: String
+    Description: ARN of the existing SQS queue
+    Default: 'arn:aws:sqs:us-west-2:973887463509:sendEmail'
+
+Conditions:
+  IsProd: !Equals [!Ref Stage, "prod"]
+
+Resources:
+  EmailQueue:
+    Type: AWS::SQS::Queue
+
+  EmailSenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/email.sendEmailHandler
+      Runtime: nodejs16.x
+      CodeUri: .
+      Description: Lambda function to process SQS messages and send emails using SES.
+      Role: arn:aws:iam::973887463509:role/lambda-outsource
+      MemorySize: 256
+      Timeout: 10
+      Policies:
+        - AmazonSESFullAccess
+        - AmazonSQSFullAccess
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            Queue: !Ref SQSQueueArn
+            BatchSize: 5
+      Environment:
+        Variables:
+          SOURCE_EMAIL: !If [IsProd, !Ref SourceEmailProd, !Ref SourceEmailDev]
+          STAGE: !Ref Stage
+
+Outputs:
+  EmailQueueUrl:
+    Description: URL of the newly created SQS queue.
+    Value: !Ref EmailQueue
